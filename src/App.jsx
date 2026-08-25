@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { 
-  getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged 
+  getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, updateEmail, updatePassword 
 } from 'firebase/auth';
 import { 
   getFirestore, collection, doc, setDoc, onSnapshot, 
@@ -137,6 +137,75 @@ const ProgressService = {
     }
   }
 };
+const ProfileModal = ({ user, onClose }) => {
+  const [newEmail, setNewEmail] = useState(user?.email || "");
+  const [newPassword, setNewPassword] = useState("");
+  const [message, setMessage] = useState("");
+
+  const handleUpdate = async () => {
+    try {
+      // 1. 이메일이 바뀌었으면 업데이트!
+      if (newEmail !== user.email) {
+        await updateEmail(user, newEmail);
+      }
+      // 2. 비밀번호를 새로 입력했으면 업데이트!
+      if (newPassword) {
+        await updatePassword(user, newPassword);
+      }
+      setMessage("정보가 성공적으로 변경되었습니다! 🎉");
+      setTimeout(() => onClose(), 1500); // 1.5초 뒤에 창 닫기
+    } catch (error) {
+      console.error(error);
+      if (error.code === 'auth/requires-recent-login') {
+        setMessage("보안을 위해 로그아웃 후 다시 로그인해야 변경할 수 있습니다.");
+      } else {
+        setMessage("오류가 발생했습니다: " + error.message);
+      }
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-xl">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-xl font-bold text-stone-800">👤 마이페이지</h2>
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-sm font-bold text-stone-600 mb-1">이메일 변경</label>
+          <input
+            type="email"
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+            className="w-full p-3 border border-stone-200 rounded-xl outline-none focus:border-emerald-500 bg-stone-50"
+          />
+        </div>
+
+        <div className="mb-6">
+          <label className="block text-sm font-bold text-stone-600 mb-1">새 비밀번호 (변경 시에만)</label>
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="새로운 비밀번호 입력"
+            className="w-full p-3 border border-stone-200 rounded-xl outline-none focus:border-emerald-500 bg-stone-50"
+          />
+        </div>
+
+        {message && <p className="text-sm mb-4 text-emerald-600 font-bold text-center">{message}</p>}
+
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 p-3 bg-stone-100 text-stone-600 rounded-xl font-bold hover:bg-stone-200">
+            취소
+          </button>
+          <button onClick={handleUpdate} className="flex-1 p-3 bg-stone-800 text-white rounded-xl font-bold hover:bg-black">
+            저장하기
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -152,6 +221,8 @@ export default function App() {
   
   const [loading, setLoading] = useState(true);
   const [rewardQueue, setRewardQueue] = useState([]);
+  const [recordSubTab, setRecordSubTab] = useState('time'); // 'time'은 타임라인, 'stats'는 통계 화면
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -242,11 +313,15 @@ export default function App() {
     <div className="flex flex-col h-screen max-w-md mx-auto bg-stone-50 text-stone-800 shadow-xl overflow-hidden relative">
       <header className="px-5 py-4 bg-white shadow-sm z-10 flex justify-between items-center">
         <h1 className="font-bold text-xl text-stone-800 flex items-center gap-2">
-          <Sprout className="text-emerald-500" /> Plan Garden
+          <Sprout className="text-emerald-500" /> Chrono Bloom
         </h1>
         <div className="flex gap-2 text-xs font-semibold items-center">
           <span className="flex items-center gap-1 bg-stone-100 px-2 py-1 rounded-full text-stone-600">Lv.{stats.level}</span>
           <span className="flex items-center gap-1 bg-emerald-50 text-emerald-600 px-2 py-1 rounded-full"><Star size={12}/> {stats.totalExp}XP</span>
+          {/* 251번 줄 아래에 이 세 줄을 쏙 복사해서 붙여넣으세요! */}
+          <button onClick={() => setIsProfileOpen(true)} className="p-1 text-stone-400 hover:text-stone-600 ml-1">
+            👤
+          </button>
           <button onClick={() => setIsSettingsOpen(true)} className="p-1 text-stone-400 hover:text-stone-600 ml-1 transition-colors"><Settings2 size={18}/></button>
         </div>
       </header>
@@ -254,28 +329,54 @@ export default function App() {
       <main className="flex-1 overflow-y-auto pb-20 no-scrollbar bg-stone-50">
         {activeTab === 'today' && <TodayScreen user={user} appId={appId} tasks={tasks} recurringTasks={recurringTasks} taskCompletions={taskCompletions} categories={categories} handleTaskToggle={handleTaskToggle} stats={stats} />}
         {activeTab === 'recurring' && <RecurringTaskScreen user={user} appId={appId} recurringTasks={recurringTasks} categories={categories} />}
-        {activeTab === 'tracker' && <TimeTrackerScreen user={user} appId={appId} categories={categories} timeLogs={timeLogs} onLogUpdate={handleTimeLogUpdate} />}
+        {/* 기존 tracker 화면을 서브 탭으로 분리한 코드 */}
+        {activeTab === 'tracker' && (
+          <div className="h-full flex flex-col">
+            {/* 상단 미니 스위치 */}
+            <div className="flex bg-stone-100 p-1 mx-4 mt-4 mb-2 rounded-lg shrink-0">
+              <button 
+                onClick={() => setRecordSubTab('time')}
+                className={`flex-1 py-1.5 text-sm font-bold rounded-md transition-all ${recordSubTab === 'time' ? 'bg-white text-stone-800 shadow-sm' : 'text-stone-400'}`}>
+                타임라인
+              </button>
+              <button 
+                onClick={() => setRecordSubTab('stats')}
+                className={`flex-1 py-1.5 text-sm font-bold rounded-md transition-all ${recordSubTab === 'stats' ? 'bg-white text-stone-800 shadow-sm' : 'text-stone-400'}`}>
+                통계 분석
+              </button>
+            </div>
+            
+            {/* 화면 전환 영역 */}
+            <div className="flex-1 overflow-y-auto no-scrollbar">
+              {recordSubTab === 'time' ? (
+                /* 기존에 있던 TimeTrackerScreen 코드를 그대로 넣습니다 (잘린 부분의 속성들도 꼭 그대로 유지해 주세요!) */
+                <TimeTrackerScreen user={user} appId={appId} categories={categories} timeLogs={timeLogs} />
+              ) : (
+                /* 기존에 있던 StatsScreen 코드를 그대로 넣습니다 */
+                <StatsScreen categories={categories} timeLogs={timeLogs} />
+              )}
+            </div>
+          </div>
+        )}
         {activeTab === 'growth' && <ThemeGrowthScreen stats={stats} />}
         {activeTab === 'collection' && <ThemeCollectionScreen user={user} appId={appId} stats={stats} />}
         {activeTab === 'map' && <ThemeMapScreen stats={stats} />}
-        {activeTab === 'stats' && <StatsScreen categories={categories} timeLogs={timeLogs} />}
       </main>
 
       {/* 가로 스크롤 가능한 탭 네비게이션 */}
       <nav className="absolute bottom-0 w-full bg-white border-t border-stone-200 z-20 pb-safe">
-        <div className="flex overflow-x-auto no-scrollbar px-2 py-2 items-center min-w-max gap-1">
+        <div className="flex justify-around items-center px-2 py-2 w-full">
           <TabButton icon={<Home size={22}/>} label="Today" active={activeTab === 'today'} onClick={() => setActiveTab('today')} />
           <TabButton icon={<ListTodo size={22}/>} label="반복" active={activeTab === 'recurring'} onClick={() => setActiveTab('recurring')} />
-          <TabButton icon={<Clock size={22}/>} label="시간기록" active={activeTab === 'tracker'} onClick={() => setActiveTab('tracker')} />
-          <TabButton icon={<BarChart3 size={22}/>} label="통계" active={activeTab === 'stats'} onClick={() => setActiveTab('stats')} />
+          <TabButton icon={<Clock size={22}/>} label="기록" active={activeTab === 'tracker'} onClick={() => setActiveTab('tracker')} />
           <TabButton icon={<Sprout size={22}/>} label="성장" active={activeTab === 'growth'} onClick={() => setActiveTab('growth')} />
-          <TabButton icon={<Layers size={22}/>} label="컬렉션" active={activeTab === 'collection'} onClick={() => setActiveTab('collection')} />
           <TabButton icon={<MapIcon size={22}/>} label="월드맵" active={activeTab === 'map'} onClick={() => setActiveTab('map')} />
         </div>
       </nav>
 
       {rewardQueue.length > 0 && <RewardModal data={rewardQueue[0]} onClose={() => setRewardQueue(prev => prev.slice(1))} />}
       {isSettingsOpen && <SettingsModal user={user} appId={appId} stats={stats} onClose={() => setIsSettingsOpen(false)} />}
+      {isProfileOpen && <ProfileModal user={user} onClose={() => setIsProfileOpen(false)} />}
     </div>
   );
 }
@@ -474,7 +575,12 @@ const TimeTrackerScreen = ({ user, appId, categories, timeLogs, onLogUpdate }) =
     <div className="h-full flex flex-col bg-white select-none">
       <div className="flex justify-between items-center p-4 border-b border-stone-100 bg-white sticky top-0 z-20 shadow-sm">
         <button onClick={() => setSelectedDate(ProgressService.getTodayStr(new Date(selectedDate).getDate() - 1 - new Date().getDate()))} className="p-2 text-stone-400"><ChevronLeft/></button>
-        <h2 className="font-bold text-stone-800">{selectedDate === ProgressService.getTodayStr() ? '오늘' : selectedDate}</h2>
+        <input 
+          type="date" 
+          value={selectedDate}
+          onChange={(e) => setSelectedDate(e.target.value)}
+          className="bg-transparent text-xl font-bold text-stone-800 outline-none cursor-pointer text-center"
+        />
         <button onClick={() => setSelectedDate(ProgressService.getTodayStr(new Date(selectedDate).getDate() + 1 - new Date().getDate()))} className="p-2 text-stone-400"><ChevronRight/></button>
       </div>
 
@@ -740,7 +846,7 @@ const ThemeMapScreen = ({ stats }) => {
 
   return (
     <div className="p-5 relative bg-stone-50 min-h-[120%]">
-      <div className="mb-8 bg-white p-5 rounded-3xl shadow-sm border border-stone-100 sticky top-0 z-10">
+      <div className="mb-8 bg-white p-5 rounded-3xl shadow-sm border border-stone-100 sticky top-0 z-50">
         <h2 className="text-2xl font-bold text-stone-800 mb-1">월드 맵</h2>
         <p className="text-stone-500 text-sm font-medium">30개의 섬으로 이루어진 대장정</p>
       </div>
