@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Home, Sprout, Map as MapIcon, Calendar, Settings, 
   CheckCircle2, Circle, Plus, Trophy, Star, X, ChevronRight, ChevronLeft,
@@ -137,6 +137,7 @@ const ProgressService = {
     }
   }
 };
+
 const ProfileModal = ({ user, onClose }) => {
   const [newEmail, setNewEmail] = useState(user?.email || "");
   const [newPassword, setNewPassword] = useState("");
@@ -144,16 +145,14 @@ const ProfileModal = ({ user, onClose }) => {
 
   const handleUpdate = async () => {
     try {
-      // 1. 이메일이 바뀌었으면 업데이트!
       if (newEmail !== user.email) {
         await updateEmail(user, newEmail);
       }
-      // 2. 비밀번호를 새로 입력했으면 업데이트!
       if (newPassword) {
         await updatePassword(user, newPassword);
       }
       setMessage("정보가 성공적으로 변경되었습니다! 🎉");
-      setTimeout(() => onClose(), 1500); // 1.5초 뒤에 창 닫기
+      setTimeout(() => onClose(), 1500); 
     } catch (error) {
       console.error(error);
       if (error.code === 'auth/requires-recent-login') {
@@ -221,7 +220,7 @@ export default function App() {
   
   const [loading, setLoading] = useState(true);
   const [rewardQueue, setRewardQueue] = useState([]);
-  const [recordSubTab, setRecordSubTab] = useState('time'); // 'time'은 타임라인, 'stats'는 통계 화면
+  const [recordSubTab, setRecordSubTab] = useState('time'); 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   useEffect(() => {
@@ -318,7 +317,6 @@ export default function App() {
         <div className="flex gap-2 text-xs font-semibold items-center">
           <span className="flex items-center gap-1 bg-stone-100 px-2 py-1 rounded-full text-stone-600">Lv.{stats.level}</span>
           <span className="flex items-center gap-1 bg-emerald-50 text-emerald-600 px-2 py-1 rounded-full"><Star size={12}/> {stats.totalExp}XP</span>
-          {/* 251번 줄 아래에 이 세 줄을 쏙 복사해서 붙여넣으세요! */}
           <button onClick={() => setIsProfileOpen(true)} className="p-1 text-stone-400 hover:text-stone-600 ml-1">
             👤
           </button>
@@ -329,10 +327,8 @@ export default function App() {
       <main className="flex-1 overflow-y-auto pb-20 no-scrollbar bg-stone-50">
         {activeTab === 'today' && <TodayScreen user={user} appId={appId} tasks={tasks} recurringTasks={recurringTasks} taskCompletions={taskCompletions} categories={categories} handleTaskToggle={handleTaskToggle} stats={stats} />}
         {activeTab === 'recurring' && <RecurringTaskScreen user={user} appId={appId} recurringTasks={recurringTasks} categories={categories} />}
-        {/* 기존 tracker 화면을 서브 탭으로 분리한 코드 */}
         {activeTab === 'tracker' && (
           <div className="h-full flex flex-col">
-            {/* 상단 미니 스위치 */}
             <div className="flex bg-stone-100 p-1 mx-4 mt-4 mb-2 rounded-lg shrink-0">
               <button 
                 onClick={() => setRecordSubTab('time')}
@@ -346,13 +342,10 @@ export default function App() {
               </button>
             </div>
             
-            {/* 화면 전환 영역 */}
             <div className="flex-1 overflow-y-auto no-scrollbar">
               {recordSubTab === 'time' ? (
-                /* 기존에 있던 TimeTrackerScreen 코드를 그대로 넣습니다 (잘린 부분의 속성들도 꼭 그대로 유지해 주세요!) */
-                <TimeTrackerScreen user={user} appId={appId} categories={categories} timeLogs={timeLogs} />
+                <TimeTrackerScreen user={user} appId={appId} categories={categories} timeLogs={timeLogs} onLogUpdate={handleTimeLogUpdate} />
               ) : (
-                /* 기존에 있던 StatsScreen 코드를 그대로 넣습니다 */
                 <StatsScreen categories={categories} timeLogs={timeLogs} />
               )}
             </div>
@@ -363,7 +356,6 @@ export default function App() {
         {activeTab === 'map' && <ThemeMapScreen stats={stats} />}
       </main>
 
-      {/* 가로 스크롤 가능한 탭 네비게이션 */}
       <nav className="absolute bottom-0 w-full bg-white border-t border-stone-200 z-20 pb-safe">
         <div className="flex justify-around items-center px-2 py-2 w-full">
           <TabButton icon={<Home size={22}/>} label="Today" active={activeTab === 'today'} onClick={() => setActiveTab('today')} />
@@ -558,7 +550,7 @@ const TimeTrackerScreen = ({ user, appId, categories, timeLogs, onLogUpdate }) =
       blocks: newLog, updatedAt: new Date().toISOString()
     }, { merge: true });
     
-    onLogUpdate(selectedDate);
+    if(onLogUpdate) onLogUpdate(selectedDate);
   };
 
   const handlePointerDown = (idx) => { setIsDragging(true); updateBlock(idx, selectedCategoryId); };
@@ -736,6 +728,15 @@ const StatsScreen = ({ categories, timeLogs }) => {
 };
 
 const ThemeGrowthScreen = ({ stats }) => {
+  // ✨ 에러 나는 패키지 대신, 안전한 웹 플레이어를 자동으로 불러옵니다 (npm 필요 없음!)
+  useEffect(() => {
+    if (!document.querySelector('script[src*="lottie-player"]')) {
+      const script = document.createElement("script");
+      script.src = "https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js";
+      document.body.appendChild(script);
+    }
+  }, []);
+
   const duration = stats.themeDuration || 100;
   
   const isDisplayOverride = stats.selectedDisplayThemeId !== null;
@@ -749,7 +750,6 @@ const ThemeGrowthScreen = ({ stats }) => {
   const stageIndex = Math.min(Math.floor((progress / duration) * 5), 4);
   const currentVisual = theme.icons[stageIndex];
   const currentStageName = theme.stages[stageIndex];
-  
   const nextStageThreshold = Math.ceil((stageIndex + 1) * (duration / 5));
   const daysToNext = nextStageThreshold - progress;
 
@@ -762,8 +762,23 @@ const ThemeGrowthScreen = ({ stats }) => {
         <span>테마 {safeIndex + 1}</span> <span className="text-stone-300">|</span> <span className="text-stone-600">{theme.name}</span>
       </div>
 
-      <div className="w-56 h-56 bg-white/50 backdrop-blur-md rounded-full flex items-center justify-center shadow-[0_10px_40px_rgba(0,0,0,0.05)] border-4 border-white z-10 relative mb-8 transition-transform hover:scale-105 duration-300">
-        <span className="text-8xl drop-shadow-lg">{currentVisual}</span>
+      <div className="w-56 h-56 bg-white/50 backdrop-blur-md rounded-full flex items-center justify-center shadow-[0_10px_40px_rgba(0,0,0,0.05)] border-4 border-white z-10 relative mb-8 transition-transform hover:scale-105 duration-300 overflow-hidden">
+        
+        {/* ✨ 테마 1번일 때 웹 플레이어 태그로 바로 재생! 경로도 완벽하게 고정! */}
+        {theme.id === 't01' ? (
+          <lottie-player
+          key={stageIndex}
+            src={`/chrono-bloom/animations/t01_stage${stageIndex}.json`}
+            background="transparent"
+            speed="1"
+            count="3"
+            autoplay
+            style={{ width: '100%', height: '100%', padding: '1rem' }}
+          ></lottie-player>
+        ) : (
+          <span className="text-8xl drop-shadow-lg">{currentVisual}</span>
+        )}
+
         {stageIndex >= 4 && <div className="absolute inset-0 bg-yellow-200/30 rounded-full blur-xl animate-pulse -z-10"></div>}
       </div>
 
@@ -887,8 +902,12 @@ const SettingsModal = ({ user, appId, stats, onClose }) => {
   const handleSave = async () => {
     if (!user) return;
     setIsSaving(true);
+    
+    // ✨ 핵심: 목표 기간을 바꿨을 때, 현재 진행도가 바뀐 기간보다 크면 일수를 기간에 딱 맞춰 조정합니다!
     let newProgress = stats.currentThemeProgress;
-    if (newProgress >= duration) newProgress = duration - 1; 
+    if (newProgress >= duration) {
+      newProgress = duration - 1; 
+    }
 
     await updateDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'profile', 'gamestats'), { 
       themeDuration: Number(duration),
@@ -908,7 +927,7 @@ const SettingsModal = ({ user, appId, stats, onClose }) => {
         
         <div className="mb-6 flex-1 overflow-y-auto no-scrollbar">
           <label className="block text-sm font-bold text-stone-700 mb-2">테마 달성 목표일</label>
-          <p className="text-xs text-stone-500 mb-4 leading-relaxed">하나의 테마를 완성하는 데 필요한 일수를 선택하세요. 작심삼일 모드를 선택하면 3일 만에 테마가 최종 진화합니다!</p>
+          <p className="text-xs text-stone-500 mb-4 leading-relaxed">하나의 테마를 완성하는 데 필요한 일수를 선택하세요.</p>
           <div className="space-y-2">
             {[3, 10, 30, 50, 100].map(d => (
               <button 
